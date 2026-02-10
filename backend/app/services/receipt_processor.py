@@ -81,7 +81,7 @@ class ReceiptProcessor:
             image_data, media_type = self.encode_image(image_bytes, filename)
 
             response = self.client.messages.create(
-                model="claude-opus-4-5-20251101",
+                model="claude-sonnet-4-5-20250929",
                 max_tokens=1024,
                 messages=[
                     {

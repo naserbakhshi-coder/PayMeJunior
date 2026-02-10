@@ -147,19 +147,78 @@ async def process_receipts_base64(request: ProcessBase64Request):
     for img in request.images:
         try:
             image_bytes = base64.b64decode(img.data)
+            print(f"Decoded image: {img.filename}, size: {len(image_bytes)} bytes")
             file_data.append((image_bytes, img.filename))
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid base64 data: {str(e)}")
 
-    # Process receipts
-    result = processor.process_multiple_receipts(file_data, report_id)
+    # Process receipts with detailed error tracking
+    expenses = []
+    failed_receipts = []
+
+    for image_bytes, filename in file_data:
+        try:
+            # Try to upload to storage first
+            print(f"Uploading {filename} to storage...")
+            receipt_path = supabase.upload_receipt(image_bytes, filename, report_id)
+            print(f"Uploaded to: {receipt_path}")
+
+            # Extract expense data
+            print(f"Extracting data from {filename}...")
+            extracted = processor.extract_expense_data(image_bytes, filename)
+
+            if extracted is None:
+                print(f"Extraction returned None for {filename}")
+                supabase.delete_receipt(receipt_path)
+                failed_receipts.append({
+                    "filename": filename,
+                    "error": "Claude could not extract expense data from image"
+                })
+                continue
+
+            print(f"Extracted: {extracted}")
+
+            # Save to database
+            expense_data = {
+                "date": extracted.date,
+                "merchant": extracted.merchant,
+                "description": extracted.description,
+                "amount": extracted.amount,
+                "currency": extracted.currency,
+                "category": extracted.category,
+                "payment_type": extracted.payment_type,
+                "city": extracted.city,
+                "items": extracted.items,
+                "receipt_path": receipt_path
+            }
+
+            saved_expense = supabase.save_expense(expense_data, report_id)
+            expenses.append(saved_expense)
+            print(f"Saved expense: {saved_expense}")
+
+        except Exception as e:
+            import traceback
+            error_detail = f"{type(e).__name__}: {str(e)}"
+            print(f"Error processing {filename}: {error_detail}")
+            traceback.print_exc()
+            failed_receipts.append({
+                "filename": filename,
+                "error": error_detail
+            })
+
+    # Update report count
+    supabase.update_expense_report_count(report_id, len(expenses))
 
     return {
         "report_id": report_id,
         "report_name": request.report_name,
-        "expenses": result["expenses"],
-        "failed_receipts": result["failed_receipts"],
-        "summary": result["summary"]
+        "expenses": expenses,
+        "failed_receipts": failed_receipts,
+        "summary": {
+            "total": len(file_data),
+            "successful": len(expenses),
+            "failed": len(failed_receipts)
+        }
     }
 
 
