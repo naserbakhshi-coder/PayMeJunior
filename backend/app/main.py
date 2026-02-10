@@ -50,6 +50,20 @@ async def health_check():
     }
 
 
+@app.get("/debug/config")
+async def debug_config():
+    """Debug endpoint to check configuration status (does not expose secrets)"""
+    settings = get_settings()
+    return {
+        "anthropic_api_key_set": bool(settings.anthropic_api_key),
+        "anthropic_api_key_length": len(settings.anthropic_api_key) if settings.anthropic_api_key else 0,
+        "supabase_url_set": bool(settings.supabase_url),
+        "supabase_url": settings.supabase_url[:30] + "..." if settings.supabase_url else None,
+        "supabase_key_set": bool(settings.supabase_key),
+        "supabase_key_length": len(settings.supabase_key) if settings.supabase_key else 0,
+    }
+
+
 # For local development
 if __name__ == "__main__":
     import uvicorn

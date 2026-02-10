@@ -124,8 +124,14 @@ class ReceiptProcessor:
 
             return ExpenseExtracted(**expense_data)
 
+        except anthropic.APIError as e:
+            print(f"Claude API error for {filename}: {str(e)}")
+            return None
+        except json.JSONDecodeError as e:
+            print(f"JSON parse error for {filename}: {str(e)}")
+            return None
         except Exception as e:
-            print(f"Error extracting expense data from {filename}: {str(e)}")
+            print(f"Error extracting expense data from {filename}: {type(e).__name__}: {str(e)}")
             return None
 
     def process_receipt(
@@ -177,7 +183,9 @@ class ReceiptProcessor:
             return saved_expense
 
         except Exception as e:
-            print(f"Error processing receipt {filename}: {str(e)}")
+            print(f"Error processing receipt {filename}: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def process_multiple_receipts(
