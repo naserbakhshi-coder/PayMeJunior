@@ -66,7 +66,7 @@ class ReceiptProcessor:
 
         return image_data, media_type
 
-    def extract_expense_data(self, image_bytes: bytes, filename: str) -> Optional[ExpenseExtracted]:
+    def extract_expense_data(self, image_bytes: bytes, filename: str) -> tuple[Optional[ExpenseExtracted], str]:
         """
         Extract expense information from a receipt image using Claude Vision.
 
@@ -75,10 +75,11 @@ class ReceiptProcessor:
             filename: Original filename
 
         Returns:
-            ExpenseExtracted model or None if extraction fails
+            Tuple of (ExpenseExtracted model or None, error message)
         """
         try:
             image_data, media_type = self.encode_image(image_bytes, filename)
+            print(f"Calling Claude API with image size: {len(image_bytes)} bytes, media_type: {media_type}")
 
             response = self.client.messages.create(
                 model="claude-sonnet-4-5-20250929",
@@ -106,6 +107,7 @@ class ReceiptProcessor:
 
             # Extract JSON from response
             content = response.content[0].text.strip()
+            print(f"Claude response: {content[:500]}...")
 
             # Remove markdown code blocks if present
             if content.startswith('```'):
@@ -122,17 +124,20 @@ class ReceiptProcessor:
                 amount_str = expense_data['amount'].replace('$', '').replace(',', '').strip()
                 expense_data['amount'] = float(amount_str)
 
-            return ExpenseExtracted(**expense_data)
+            return ExpenseExtracted(**expense_data), ""
 
         except anthropic.APIError as e:
-            print(f"Claude API error for {filename}: {str(e)}")
-            return None
+            error = f"Claude API error: {str(e)}"
+            print(f"{error} for {filename}")
+            return None, error
         except json.JSONDecodeError as e:
-            print(f"JSON parse error for {filename}: {str(e)}")
-            return None
+            error = f"JSON parse error: {str(e)}"
+            print(f"{error} for {filename}")
+            return None, error
         except Exception as e:
-            print(f"Error extracting expense data from {filename}: {type(e).__name__}: {str(e)}")
-            return None
+            error = f"{type(e).__name__}: {str(e)}"
+            print(f"Error extracting expense data from {filename}: {error}")
+            return None, error
 
     def process_receipt(
         self,
@@ -156,11 +161,12 @@ class ReceiptProcessor:
             receipt_path = self.supabase.upload_receipt(image_bytes, filename, report_id)
 
             # 2. Extract expense data using Claude Vision
-            extracted = self.extract_expense_data(image_bytes, filename)
+            extracted, error = self.extract_expense_data(image_bytes, filename)
 
             if extracted is None:
                 # Delete uploaded file if extraction failed
                 self.supabase.delete_receipt(receipt_path)
+                print(f"Extraction failed: {error}")
                 return None
 
             # 3. Prepare expense data for database

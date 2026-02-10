@@ -165,14 +165,14 @@ async def process_receipts_base64(request: ProcessBase64Request):
 
             # Extract expense data
             print(f"Extracting data from {filename}...")
-            extracted = processor.extract_expense_data(image_bytes, filename)
+            extracted, extract_error = processor.extract_expense_data(image_bytes, filename)
 
             if extracted is None:
-                print(f"Extraction returned None for {filename}")
+                print(f"Extraction failed for {filename}: {extract_error}")
                 supabase.delete_receipt(receipt_path)
                 failed_receipts.append({
                     "filename": filename,
-                    "error": "Claude could not extract expense data from image"
+                    "error": extract_error or "Claude could not extract expense data from image"
                 })
                 continue
 
