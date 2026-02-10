@@ -64,6 +64,62 @@ async def debug_config():
     }
 
 
+@app.get("/debug/test")
+async def debug_test():
+    """Test database and storage connectivity"""
+    from app.services.supabase_service import get_supabase_service
+
+    results = {
+        "database": {"status": "unknown", "error": None},
+        "storage": {"status": "unknown", "error": None},
+        "claude": {"status": "unknown", "error": None},
+    }
+
+    # Test database
+    try:
+        supabase = get_supabase_service()
+        test_report = supabase.create_expense_report("_test_report")
+        if test_report:
+            supabase.delete_expense_report(test_report["id"])
+            results["database"]["status"] = "ok"
+        else:
+            results["database"]["status"] = "failed"
+            results["database"]["error"] = "Could not create test report"
+    except Exception as e:
+        results["database"]["status"] = "error"
+        results["database"]["error"] = str(e)
+
+    # Test storage bucket exists
+    try:
+        buckets = supabase.client.storage.list_buckets()
+        bucket_names = [b.name for b in buckets]
+        if "receipts" in bucket_names:
+            results["storage"]["status"] = "ok"
+        else:
+            results["storage"]["status"] = "missing"
+            results["storage"]["error"] = f"Bucket 'receipts' not found. Available: {bucket_names}"
+    except Exception as e:
+        results["storage"]["status"] = "error"
+        results["storage"]["error"] = str(e)
+
+    # Test Claude API
+    try:
+        import anthropic
+        settings = get_settings()
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Say hi"}]
+        )
+        results["claude"]["status"] = "ok"
+    except Exception as e:
+        results["claude"]["status"] = "error"
+        results["claude"]["error"] = str(e)
+
+    return results
+
+
 # For local development
 if __name__ == "__main__":
     import uvicorn
