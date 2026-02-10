@@ -53,17 +53,29 @@ class ReceiptProcessor:
         """
         image_data = base64.standard_b64encode(image_bytes).decode('utf-8')
 
-        # Determine media type from filename
-        ext = filename.lower().split(".")[-1] if "." in filename else ""
-        media_types = {
-            'jpg': 'image/jpeg',
-            'jpeg': 'image/jpeg',
-            'png': 'image/png',
-            'gif': 'image/gif',
-            'bmp': 'image/bmp'
-        }
-        media_type = media_types.get(ext, 'image/jpeg')
+        # Detect media type from actual image bytes (magic bytes)
+        if image_bytes[:2] == b'\xff\xd8':
+            media_type = 'image/jpeg'
+        elif image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+            media_type = 'image/png'
+        elif image_bytes[:6] in (b'GIF87a', b'GIF89a'):
+            media_type = 'image/gif'
+        elif image_bytes[:4] == b'RIFF' and image_bytes[8:12] == b'WEBP':
+            media_type = 'image/webp'
+        else:
+            # Fallback to filename extension
+            ext = filename.lower().split(".")[-1] if "." in filename else ""
+            media_types = {
+                'jpg': 'image/jpeg',
+                'jpeg': 'image/jpeg',
+                'png': 'image/png',
+                'gif': 'image/gif',
+                'webp': 'image/webp',
+                'heic': 'image/heic',
+            }
+            media_type = media_types.get(ext, 'image/jpeg')
 
+        print(f"Detected media type: {media_type} for {filename}, first bytes: {image_bytes[:10].hex()}")
         return image_data, media_type
 
     def extract_expense_data(self, image_bytes: bytes, filename: str) -> tuple[Optional[ExpenseExtracted], str]:
