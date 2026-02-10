@@ -222,6 +222,32 @@ async def process_receipts_base64(request: ProcessBase64Request):
     }
 
 
+@router.post("/test-image")
+async def test_image(request: ProcessBase64Request):
+    """Test endpoint to verify image data is being received correctly"""
+    if not request.images:
+        return {"error": "No images"}
+
+    img = request.images[0]
+    try:
+        image_bytes = base64.b64decode(img.data)
+        # Check if it looks like an image
+        is_jpeg = image_bytes[:2] == b'\xff\xd8'
+        is_png = image_bytes[:8] == b'\x89PNG\r\n\x1a\n'
+
+        return {
+            "filename": img.filename,
+            "content_type": img.content_type,
+            "data_length": len(img.data),
+            "decoded_size": len(image_bytes),
+            "is_jpeg": is_jpeg,
+            "is_png": is_png,
+            "first_bytes": image_bytes[:20].hex() if len(image_bytes) > 20 else image_bytes.hex(),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @router.post("/process-base64-single")
 async def process_single_receipt_base64(request: ProcessBase64SingleRequest):
     """
