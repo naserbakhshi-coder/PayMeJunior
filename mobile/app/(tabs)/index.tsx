@@ -91,9 +91,12 @@ export default function UploadScreen() {
 
       // Show result
       if (result.failed_receipts.length > 0) {
+        const failedDetails = result.failed_receipts
+          .map((f: any) => `${f.filename}: ${f.error}`)
+          .join("\n");
         Alert.alert(
           "Processing Complete",
-          `Processed ${result.summary.successful} of ${result.summary.total} receipts.\n${result.summary.failed} failed.`,
+          `Processed ${result.summary.successful} of ${result.summary.total} receipts.\n${result.summary.failed} failed.\n\nDetails:\n${failedDetails}`,
           [{ text: "View Expenses", onPress: () => router.push("/expenses") }]
         );
       } else {

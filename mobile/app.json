@@ -6,15 +6,13 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "newArchEnabled": true,
     "scheme": "paymejunior",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#366092"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.paymejunior.app",
@@ -27,6 +25,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#366092"
       },
+      "edgeToEdgeEnabled": true,
       "package": "com.paymejunior.app",
       "permissions": [
         "READ_EXTERNAL_STORAGE",
@@ -34,8 +33,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png",
-      "bundler": "metro"
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -45,9 +43,6 @@
           "photosPermission": "PayMeJunior needs access to your photos to select receipt images."
         }
       ]
-    ],
-    "experiments": {
-      "typedRoutes": true
-    }
+    ]
   }
 }

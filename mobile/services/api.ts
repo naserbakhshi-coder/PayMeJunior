@@ -1,8 +1,6 @@
 /**
  * API client for communicating with Railway backend
  */
-import axios from "axios";
-import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { API_URL } from "@/constants/config";
 import type {
@@ -13,14 +11,35 @@ import type {
   SelectedImage,
 } from "@/types";
 
-// Create axios instance
-const api = axios.create({
-  baseURL: `${API_URL}/api/v1`,
-  timeout: 120000, // 2 minutes for processing
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
+const BASE_URL = `${API_URL}/api/v1`;
+
+/**
+ * Convert image URI to base64 using XMLHttpRequest (more reliable in React Native)
+ */
+async function uriToBase64(uri: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+      const reader = new FileReader();
+      reader.onloadend = function () {
+        const result = reader.result as string;
+        // Remove data URL prefix (e.g., "data:image/jpeg;base64,")
+        const base64 = result.split(",")[1];
+        if (base64) {
+          resolve(base64);
+        } else {
+          reject(new Error("Failed to extract base64 data"));
+        }
+      };
+      reader.onerror = () => reject(new Error("FileReader error"));
+      reader.readAsDataURL(xhr.response);
+    };
+    xhr.onerror = () => reject(new Error("XHR error loading image"));
+    xhr.open("GET", uri);
+    xhr.responseType = "blob";
+    xhr.send();
+  });
+}
 
 /**
  * Process multiple receipt images
@@ -29,29 +48,76 @@ export async function processReceipts(
   images: SelectedImage[],
   reportName: string = "Expense Report"
 ): Promise<ProcessingResult> {
-  const formData = new FormData();
+  // Read the first image as base64 and send via JSON
+  const image = images[0];
+  const base64 = await uriToBase64(image.uri);
 
-  // Add images to form data
-  for (const image of images) {
-    const fileInfo = await FileSystem.getInfoAsync(image.uri);
-    if (fileInfo.exists) {
-      formData.append("files", {
-        uri: image.uri,
-        name: image.fileName,
-        type: image.type,
-      } as any);
-    }
-  }
-
-  formData.append("report_name", reportName);
-
-  const response = await api.post<ProcessingResult>("/receipts/process", formData, {
+  const response = await fetch(`${BASE_URL}/receipts/process-base64`, {
+    method: "POST",
     headers: {
-      "Content-Type": "multipart/form-data",
+      "Content-Type": "application/json",
     },
+    body: JSON.stringify({
+      report_name: reportName,
+      images: [{
+        data: base64,
+        filename: image.fileName || "receipt.jpg",
+        content_type: image.type || "image/jpeg",
+      }],
+    }),
   });
 
-  return response.data;
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("API Error:", errorText);
+    throw new Error(`Failed to process receipt: ${response.status}`);
+  }
+
+  const result: ProcessingResult = await response.json();
+
+  // Process remaining images
+  for (let i = 1; i < images.length; i++) {
+    const img = images[i];
+    try {
+      const imgBase64 = await uriToBase64(img.uri);
+
+      const resp = await fetch(`${BASE_URL}/receipts/process-base64-single`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          report_id: result.report_id,
+          image: {
+            data: imgBase64,
+            filename: img.fileName || "receipt.jpg",
+            content_type: img.type || "image/jpeg",
+          },
+        }),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        result.expenses.push(data.expense);
+        result.summary.successful++;
+      } else {
+        result.failed_receipts.push({
+          filename: img.fileName,
+          error: "Processing failed",
+        });
+        result.summary.failed++;
+      }
+    } catch (error) {
+      result.failed_receipts.push({
+        filename: img.fileName,
+        error: String(error),
+      });
+      result.summary.failed++;
+    }
+    result.summary.total++;
+  }
+
+  return result;
 }
 
 /**
@@ -61,53 +127,86 @@ export async function processSingleReceipt(
   image: SelectedImage,
   reportId: string
 ): Promise<Expense> {
-  const formData = new FormData();
+  const base64 = await uriToBase64(image.uri);
 
-  formData.append("file", {
-    uri: image.uri,
-    name: image.fileName,
-    type: image.type,
-  } as any);
-  formData.append("report_id", reportId);
-
-  const response = await api.post("/receipts/process-single", formData, {
+  const response = await fetch(`${BASE_URL}/receipts/process-base64-single`, {
+    method: "POST",
     headers: {
-      "Content-Type": "multipart/form-data",
+      "Content-Type": "application/json",
     },
+    body: JSON.stringify({
+      report_id: reportId,
+      image: {
+        data: base64,
+        filename: image.fileName || "receipt.jpg",
+        content_type: image.type || "image/jpeg",
+      },
+    }),
   });
 
-  return response.data.expense;
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.expense;
 }
 
 /**
  * Get all expense reports
  */
 export async function getReports(): Promise<ExpenseReport[]> {
-  const response = await api.get<{ reports: ExpenseReport[] }>("/reports");
-  return response.data.reports;
+  const response = await fetch(`${BASE_URL}/reports`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.reports;
 }
 
 /**
  * Create a new expense report
  */
 export async function createReport(name: string): Promise<ExpenseReport> {
-  const response = await api.post<ExpenseReport>("/reports", { name });
-  return response.data;
+  const response = await fetch(`${BASE_URL}/reports`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 /**
  * Get a specific report
  */
 export async function getReport(reportId: string): Promise<ExpenseReport> {
-  const response = await api.get<ExpenseReport>(`/reports/${reportId}`);
-  return response.data;
+  const response = await fetch(`${BASE_URL}/reports/${reportId}`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 /**
  * Delete a report
  */
 export async function deleteReport(reportId: string): Promise<void> {
-  await api.delete(`/reports/${reportId}`);
+  const response = await fetch(`${BASE_URL}/reports/${reportId}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
 }
 
 /**
@@ -117,16 +216,26 @@ export async function getReportExpenses(reportId: string): Promise<{
   expenses: Expense[];
   report_name: string;
 }> {
-  const response = await api.get(`/reports/${reportId}/expenses`);
-  return response.data;
+  const response = await fetch(`${BASE_URL}/reports/${reportId}/expenses`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 /**
  * Get report summary
  */
 export async function getReportSummary(reportId: string): Promise<ExpenseSummary> {
-  const response = await api.get<ExpenseSummary>(`/reports/${reportId}/summary`);
-  return response.data;
+  const response = await fetch(`${BASE_URL}/reports/${reportId}/summary`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 /**
@@ -136,39 +245,29 @@ export async function downloadExcel(
   reportId: string,
   reportName: string = "expense_report"
 ): Promise<string> {
-  // Get Excel file as arraybuffer
-  const response = await api.post(
-    `/reports/${reportId}/excel`,
-    { report_name: reportName },
-    { responseType: "arraybuffer" }
-  );
-
-  // Convert to base64
-  const base64 = btoa(
-    new Uint8Array(response.data).reduce(
-      (data, byte) => data + String.fromCharCode(byte),
-      ""
-    )
-  );
-
-  // Save to document directory
-  const filename = `${reportName.replace(/\s+/g, "_")}.xlsx`;
-  const fileUri = FileSystem.documentDirectory + filename;
-
-  await FileSystem.writeAsStringAsync(fileUri, base64, {
-    encoding: FileSystem.EncodingType.Base64,
+  const response = await fetch(`${BASE_URL}/reports/${reportId}/excel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ report_name: reportName }),
   });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  // Get as blob and share directly
+  const blob = await response.blob();
+
+  // Create a temporary file URL for sharing
+  const fileUrl = URL.createObjectURL(blob);
 
   // Open share sheet
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(fileUri, {
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      dialogTitle: "Save Expense Report",
-    });
+    // For now, just alert - proper file saving requires native module
+    throw new Error("Excel download requires native build. Use simulator for now.");
   }
 
-  return fileUri;
+  return fileUrl;
 }
 
 /**
@@ -178,15 +277,30 @@ export async function updateExpense(
   expenseId: string,
   updates: Partial<Expense>
 ): Promise<Expense> {
-  const response = await api.patch<Expense>(`/reports/expenses/${expenseId}`, updates);
-  return response.data;
+  const response = await fetch(`${BASE_URL}/reports/expenses/${expenseId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 /**
  * Delete an expense
  */
 export async function deleteExpense(expenseId: string): Promise<void> {
-  await api.delete(`/reports/expenses/${expenseId}`);
+  const response = await fetch(`${BASE_URL}/reports/expenses/${expenseId}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
 }
 
 /**
@@ -194,11 +308,10 @@ export async function deleteExpense(expenseId: string): Promise<void> {
  */
 export async function healthCheck(): Promise<boolean> {
   try {
-    const response = await api.get("/health");
-    return response.data.status === "healthy";
+    const response = await fetch(`${BASE_URL}/health`);
+    const data = await response.json();
+    return data.status === "healthy";
   } catch {
     return false;
   }
 }
-
-export default api;

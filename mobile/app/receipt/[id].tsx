@@ -200,7 +200,7 @@ export default function ReceiptDetailScreen() {
                       styles.categoryChip,
                       isSelected && { backgroundColor: config.color },
                     ]}
-                    onPress={() => setFormData({ ...formData, category: cat })}
+                    onPress={() => setFormData({ ...formData, category: cat as any })}
                   >
                     <Text
                       style={[
