@@ -28,8 +28,9 @@
       "edgeToEdgeEnabled": true,
       "package": "com.paymejunior.app",
       "permissions": [
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -43,6 +44,19 @@
           "photosPermission": "PayMeJunior needs access to your photos to select receipt images."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "544d3dbc-604c-4fd0-b70c-a120fdc00a34"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/544d3dbc-604c-4fd0-b70c-a120fdc00a34"
+    },
+    "owner": "naser420"
   }
 }

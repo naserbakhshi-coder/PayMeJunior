@@ -120,6 +120,7 @@ export default function UploadScreen() {
     <View style={styles.container}>
       {/* Header section */}
       <View style={styles.header}>
+        <Text style={styles.welcome}>Welcome, Naser!</Text>
         <Text style={styles.title}>Upload Receipts</Text>
         <Text style={styles.subtitle}>
           Select receipt images from your photo library to extract expense data
@@ -221,6 +222,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+  },
+  welcome: {
+    fontSize: 16,
+    color: COLORS.primary,
+    marginBottom: 4,
   },
   title: {
     fontSize: 24,
